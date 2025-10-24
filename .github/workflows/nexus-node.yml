@@ -45,18 +45,6 @@ jobs:
           cd nexus-cli/clients/cli/src/session
           cat > setup.rs <<'EOF'
 
-use crate::analytics::set_wallet_address_for_reporting;
-use crate::config::Config;
-use crate::environment::Environment;
-use crate::events::Event;
-use crate::orchestrator::OrchestratorClient;
-use crate::runtime::start_authenticated_worker;
-use ed25519_dalek::SigningKey;
-use std::error::Error;
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tokio::sync::{broadcast, mpsc};
-use tokio::task::JoinHandle;
-
 #[derive(Debug)]
 pub struct SessionData {
     pub event_receiver: mpsc::Receiver<Event>,
