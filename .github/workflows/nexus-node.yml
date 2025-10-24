@@ -30,12 +30,18 @@ jobs:
           df -h /
           echo "==================="
 
-      - name: Clone Nexus CLI v0.10.14 + merge PR #1991
+      - name: Clone Nexus CLI v0.10.14 + Git config + create branch
         run: |
           git clone https://github.com/nexus-xyz/nexus-cli.git nexus-cli
           cd nexus-cli
           git fetch --all --tags
+          git config --global user.email "vuvietthangz121@gmail.com"
+          git config --global user.name "thangz121"
           git checkout -b v0.10.14-pr1991 v0.10.14
+
+      - name: Merge PR #1991
+        run: |
+          cd nexus-cli
           git fetch origin pull/1991/head:pr-1991
           git merge pr-1991 --no-ff -m "merge PR #1991 into v0.10.14"
 
