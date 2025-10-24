@@ -1,0 +1,144 @@
+name: nexus node auto restart
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # restart mỗi 6 tiếng
+  workflow_dispatch:
+
+jobs:
+  run-nexus-node:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y pkg-config libssl-dev build-essential clang cmake
+
+      - name: Clone Nexus CLI v0.10.14
+        run: |
+          git clone https://github.com/nexus-xyz/nexus-cli.git nexus-cli
+          cd nexus-cli
+          git fetch --all --tags
+          git checkout v0.10.14
+
+      - name: Patch setup.rs
+        run: |
+          cd nexus-cli/clients/cli/src/session
+          cat > setup.rs <<'EOF'
+//! Session setup and initialization
+
+use crate::analytics::set_wallet_address_for_reporting;
+use crate::config::Config;
+use crate::environment::Environment;
+use crate::events::Event;
+use crate::orchestrator::OrchestratorClient;
+use crate::runtime::start_authenticated_worker;
+use ed25519_dalek::SigningKey;
+use std::error::Error;
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use tokio::sync::{broadcast, mpsc};
+use tokio::task::JoinHandle;
+
+/// Session data for both TUI and headless modes
+#[derive(Debug)]
+pub struct SessionData {
+    pub event_receiver: mpsc::Receiver<Event>,
+    pub join_handles: Vec<JoinHandle<()>>,
+    pub shutdown_sender: broadcast::Sender<()>,
+    pub max_tasks_shutdown_sender: broadcast::Sender<()>,
+    pub node_id: u64,
+    pub orchestrator: OrchestratorClient,
+    pub num_workers: usize,
+}
+
+pub fn warn_memory_configuration(max_threads: Option<u32>) {
+    if let Some(threads) = max_threads {
+        let current_pid = Pid::from(std::process::id() as usize);
+
+        let mut sysinfo = System::new();
+        sysinfo.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[current_pid]),
+            true,
+            ProcessRefreshKind::nothing().with_memory(),
+        );
+
+        if let Some(process) = sysinfo.process(current_pid) {
+            let ram_total = process.memory();
+            if threads as u64 * crate::consts::cli_consts::PROJECTED_MEMORY_REQUIREMENT >= ram_total {
+                crate::print_cmd_warn!(
+                    "OOM warning",
+                    "Projected memory usage across {} requested threads exceeds memory currently available to process. In the event that proving fails due to an out-of-memory error, please restart the Nexus CLI with a smaller value supplied to `--max-threads`.",
+                    threads
+                );
+                std::thread::sleep(std::time::Duration::from_secs(3));
+            }
+        }
+    }
+}
+
+pub async fn setup_session(
+    config: Config,
+    env: Environment,
+    check_mem: bool,
+    max_threads: Option<u32>,
+    max_tasks: Option<u32>,
+    max_difficulty: Option<crate::nexus_orchestrator::TaskDifficulty>,
+) -> Result<SessionData, Box<dyn Error>> {
+    let node_id = config.node_id.parse::<u64>()?;
+    let client_id = config.user_id;
+
+    let mut csprng = rand_core::OsRng;
+    let signing_key: SigningKey = SigningKey::generate(&mut csprng);
+
+    let orchestrator_client = OrchestratorClient::new(env.clone());
+
+    if check_mem {
+        warn_memory_configuration(max_threads);
+    }
+
+    let num_workers: usize = max_threads.unwrap_or(1).clamp(1, 24) as usize;
+
+    let (shutdown_sender, _) = broadcast::channel(1);
+
+    set_wallet_address_for_reporting(config.wallet_address.clone());
+
+    let (event_receiver, join_handles, max_tasks_shutdown_sender) = start_authenticated_worker(
+        node_id,
+        signing_key,
+        orchestrator_client.clone(),
+        shutdown_sender.subscribe(),
+        env,
+        client_id,
+        max_tasks,
+        max_difficulty,
+        num_workers,
+    ).await;
+
+    Ok(SessionData {
+        event_receiver,
+        join_handles,
+        shutdown_sender,
+        max_tasks_shutdown_sender,
+        node_id,
+        orchestrator: orchestrator_client,
+        num_workers,
+    })
+}
+EOF
+
+      - name: Build Nexus CLI
+        run: |
+          cd nexus-cli/clients/cli
+          cargo build --release
+
+      - name: Start Nexus Node
+        run: |
+          echo "=== starting nexus node at $(date) ==="
+          cd nexus-cli/clients/cli
+          ./target/release/nexus-network start --node-id 28157475 --max-threads 12 --max-difficulty extra_large_4
