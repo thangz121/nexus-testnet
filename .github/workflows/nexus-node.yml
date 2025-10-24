@@ -22,15 +22,15 @@ jobs:
 
       - name: Clone Nexus CLI
         run: |
-          git clone https://github.com/nexus-xyz/nexus-cli.git /root/nexus-cli
+          git clone https://github.com/nexus-xyz/nexus-cli.git nexus-cli
 
       - name: Build Nexus CLI
         run: |
-          cd /root/nexus-cli/clients/cli
+          cd nexus-cli/clients/cli
           cargo build --release
 
       - name: Start Nexus Node
         run: |
           echo "=== starting nexus node at $(date) ==="
-          cd /root/nexus-cli/clients/cli
+          cd nexus-cli/clients/cli
           ./target/release/nexus-network start --node-id 28157475 --max-threads 12 --max-difficulty extra_large_4
