@@ -4,6 +4,19 @@ on:
   schedule:
     - cron: '0 */6 * * *'  # restart mỗi 6 tiếng
   workflow_dispatch:
+    inputs:
+      node_id:
+        description: 'Node ID'
+        required: true
+        default: '28157475'
+      max_threads:
+        description: 'Max threads'
+        required: true
+        default: '12'
+      max_difficulty:
+        description: 'Max difficulty'
+        required: true
+        default: 'extra_large_4'
 
 jobs:
   run-nexus-node:
@@ -45,7 +58,6 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
-/// Session data for both TUI and headless modes
 #[derive(Debug)]
 pub struct SessionData {
     pub event_receiver: mpsc::Receiver<Event>,
@@ -141,4 +153,7 @@ EOF
         run: |
           echo "=== starting nexus node at $(date) ==="
           cd nexus-cli/clients/cli
-          ./target/release/nexus-network start --node-id 28157475 --max-threads 12 --max-difficulty extra_large_4
+          ./target/release/nexus-network start \
+            --node-id ${{ github.event.inputs.node_id }} \
+            --max-threads ${{ github.event.inputs.max_threads }} \
+            --max-difficulty ${{ github.event.inputs.max_difficulty }}
