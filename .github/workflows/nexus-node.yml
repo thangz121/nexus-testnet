@@ -1,41 +1,36 @@
-name: nexus testnet node
+name: nexus node auto restart
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"  # chạy lại sau mỗi 6 tiếng
+    - cron: '0 */6 * * *'  # restart mỗi 6 tiếng
+  workflow_dispatch:
 
 jobs:
-  run-node:
+  run-nexus-node:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 tiếng
-
     steps:
-      - name: checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: setup environment
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y curl wget git jq
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt install -y nodejs
-          npm install -g pnpm
+          sudo apt install -y pkg-config libssl-dev build-essential clang cmake
 
-      - name: install nexus cli
+      - name: Clone Nexus CLI
         run: |
-          git clone https://github.com/nexus-xyz/nexus-cli.git
-          cd nexus-cli
-          pnpm install
-          pnpm build
-          pnpm link
+          git clone https://github.com/nexus-xyz/nexus-cli.git /root/nexus-cli
 
-      - name: start nexus node
+      - name: Build Nexus CLI
         run: |
-          echo "starting nexus node..."
-          nexus-network start --node-id 27943526 --max-threads 12 --max-difficulty extra_large_4 &
-          NODE_PID=$!
-          sleep 21600  # chạy 6 tiếng
-          echo "stopping node..."
-          kill $NODE_PID
+          cd /root/nexus-cli/clients/cli
+          cargo build --release
 
+      - name: Start Nexus Node
+        run: |
+          echo "=== starting nexus node at $(date) ==="
+          cd /root/nexus-cli/clients/cli
+          ./target/release/nexus-network start --node-id 28157475 --max-threads 12 --max-difficulty extra_large_4
