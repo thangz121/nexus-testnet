@@ -47,25 +47,10 @@ jobs:
       - name: Patch setup.rs line 102
         run: |
           cd nexus-cli/clients/cli/src/session
-          sed -i '102s/.*/let num_workers: usize = max_threads.unwrap_or(1).clamp(1, 12) as usize;/' setup.rs
+          sed -i '102s/.*/let num_workers: usize = max_threads.unwrap_or(1).clamp(1, 26) as usize;/' setup.rs
 
-      - name: Start Nexus Node with system monitor
+      - name: Start Nexus Node
         run: |
           cd nexus-cli/clients/cli
           # chạy Nexus Node trong background
-          ./target/release/nexus-network start --node-id 28157911 --max-threads 12 --max-difficulty extra_large_4 --head-less &
-          NODE_PID=$!
-          echo "Nexus Node PID: $NODE_PID"
-          # monitor CPU, RAM, load mỗi giây, in ra log
-          for i in {1..300}; do
-            echo "=== $(date) ==="
-            echo "CPU usage:"
-            mpstat -P ALL 1 1
-            echo "Memory usage:"
-            free -h
-            echo "Disk usage:"
-            df -h /
-            echo "==================="
-            sleep 1
-          done
-          wait $NODE_PID
+          ./target/release/nexus-network start --node-id 28157911 --max-threads 23 --max-difficulty extra_large_4 --headless
