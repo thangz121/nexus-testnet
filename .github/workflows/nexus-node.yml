@@ -30,6 +30,15 @@ jobs:
           df -h /
           echo "==================="
 
+      - name: Setup 14GB Swap
+        run: |
+          sudo fallocate -l 14G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+          free -h
+
       - name: Clone Nexus CLI v0.10.14 + Git config + create branch
         run: |
           git clone https://github.com/nexus-xyz/nexus-cli.git nexus-cli
