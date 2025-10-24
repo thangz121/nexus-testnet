@@ -2,7 +2,7 @@ name: nexus node auto restart
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # restart mỗi 6 tiếng
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -30,22 +30,19 @@ jobs:
           df -h /
           echo "==================="
 
-      - name: Clone Nexus CLI v0.10.14
+      - name: Clone Nexus CLI v0.10.14 + merge PR #1991
         run: |
           git clone https://github.com/nexus-xyz/nexus-cli.git nexus-cli
           cd nexus-cli
-          git checkout v0.10.14
+          git fetch --all --tags
+          git checkout -b v0.10.14-pr1991 v0.10.14
+          git fetch origin pull/1991/head:pr-1991
+          git merge pr-1991 --no-ff -m "merge PR #1991 into v0.10.14"
 
-      - name: Patch setup.rs
+      - name: Patch setup.rs line 102
         run: |
           cd nexus-cli/clients/cli/src/session
-          cat > setup.rs <<'EOF'
-// Session setup and initialization
-
-use crate::analytics::set_wallet_address_for_reporting;
-use crate::config::Config;
-use crate::environment;
-EOF
+          sed -i '102s/.*/let num_workers: usize = max_threads.unwrap_or(1).clamp(1, 12) as usize;/' setup.rs
 
       - name: Build Nexus CLI
         run: |
