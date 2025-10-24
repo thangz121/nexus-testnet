@@ -11,25 +11,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Setup 14GB Swap
-        run: |
-          sudo fallocate -l 18G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-          free -h
-
-      - name: System Info
-        run: |
-          echo "=== system info ==="
-          lscpu | grep 'Model name'
-          echo "RAM:"
-          free -h
-          echo "Disk:"
-          df -h /
-          echo "==================="
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -37,8 +18,17 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y pkg-config libssl-dev build-essential clang cmake
-          
+          sudo apt install -y pkg-config libssl-dev build-essential clang cmake sysstat lm-sensors
+
+      - name: Setup 14GB Swap
+        run: |
+          sudo fallocate -l 14G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+          free -h
+
       - name: Clone Nexus CLI v0.10.14 + Git config + create branch
         run: |
           git clone https://github.com/nexus-xyz/nexus-cli.git nexus-cli
@@ -57,15 +47,25 @@ jobs:
       - name: Patch setup.rs line 102
         run: |
           cd nexus-cli/clients/cli/src/session
-          sed -i '102s/.*/let num_workers: usize = max_threads.unwrap_or(1).clamp(1, 64) as usize;/' setup.rs
+          sed -i '102s/.*/let num_workers: usize = max_threads.unwrap_or(1).clamp(1, 12) as usize;/' setup.rs
 
-      - name: Build Nexus CLI
+      - name: Start Nexus Node with system monitor
         run: |
           cd nexus-cli/clients/cli
-          cargo build --release
-
-      - name: Start Nexus Node
-        run: |
-          echo "=== starting nexus node at $(date) ==="
-          cd nexus-cli/clients/cli
-          ./target/release/nexus-network start --node-id 28157475 --max-threads 26 --max-difficulty extra_large_5 --headless
+          # chạy Nexus Node trong background
+          ./target/release/nexus-network start --node-id 28157911 --max-threads 12 --max-difficulty extra_large_4 --head-less &
+          NODE_PID=$!
+          echo "Nexus Node PID: $NODE_PID"
+          # monitor CPU, RAM, load mỗi giây, in ra log
+          for i in {1..300}; do
+            echo "=== $(date) ==="
+            echo "CPU usage:"
+            mpstat -P ALL 1 1
+            echo "Memory usage:"
+            free -h
+            echo "Disk usage:"
+            df -h /
+            echo "==================="
+            sleep 1
+          done
+          wait $NODE_PID
