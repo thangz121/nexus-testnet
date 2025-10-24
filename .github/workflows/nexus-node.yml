@@ -44,7 +44,6 @@ jobs:
         run: |
           cd nexus-cli/clients/cli/src/session
           cat > setup.rs <<'EOF'
-//! Session setup and initialization
 
 use crate::analytics::set_wallet_address_for_reporting;
 use crate::config::Config;
