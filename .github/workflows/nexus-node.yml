@@ -8,64 +8,120 @@ on:
 jobs:
   run-nexus-node:
     runs-on: ubuntu-latest
+
     steps:
+      # ---------------------------------------------------------
+      # 1. FREE DISK - dọn sạch 12–14GB trên GitHub runner
+      # ---------------------------------------------------------
+      - name: free disk space (max)
+        run: |
+          echo "=== before ==="
+          df -h /
+
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/graalvm
+          sudo rm -rf /usr/local/.ghcup
+          sudo docker system prune -af
+          sudo apt-get clean
+
+          echo "=== after ==="
+          df -h /
+
+      # ---------------------------------------------------------
+      # 2. CHECKOUT
+      # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Setup 14GB Swap
+
+      # ---------------------------------------------------------
+      # 3. Cache Rust toolchain
+      # ---------------------------------------------------------
+      - name: Cache Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup
+          key: rustup-${{ runner.os }}-stable
+
+      # ---------------------------------------------------------
+      # 4. Cache Cargo target (giảm thời gian build 70%)
+      # ---------------------------------------------------------
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            nexus-cli/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      # ---------------------------------------------------------
+      # 5. Swap cho GH Actions
+      # ---------------------------------------------------------
+      - name: Setup Swap (8GB)
         run: |
-          sudo fallocate -l 18G /swapfile
+          sudo fallocate -l 8G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
-          echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
           free -h
 
-      - name: System Info
+      # ---------------------------------------------------------
+      # 6. Rust (minimal)
+      # ---------------------------------------------------------
+      - name: Install Rust minimal
         run: |
-          echo "=== system info ==="
-          lscpu | grep 'Model name'
-          echo "RAM:"
-          free -h
-          echo "Disk:"
-          df -h /
-          echo "==================="
+          rustup toolchain install stable --profile minimal
+          rustup default stable
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+      # ---------------------------------------------------------
+      # 7. Dependencies
+      # ---------------------------------------------------------
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y pkg-config libssl-dev build-essential clang cmake
-          
-      - name: Clone Nexus CLI v0.10.14 + Git config + create branch
+
+      # ---------------------------------------------------------
+      # 8. Clone Nexus CLI shallow
+      # ---------------------------------------------------------
+      - name: Clone Nexus CLI v0.10.14
         run: |
-          git clone https://github.com/nexus-xyz/nexus-cli.git nexus-cli
-          cd nexus-cli
-          git fetch --all --tags
+          git clone --depth 1 --branch v0.10.14 https://github.com/nexus-xyz/nexus-cli.git nexus-cli
           git config --global user.email "vuvietthangz121@gmail.com"
           git config --global user.name "thangz121"
-          git checkout -b v0.10.14-pr1991 v0.10.14
 
+      # ---------------------------------------------------------
+      # 9. Merge PR 1991
+      # ---------------------------------------------------------
       - name: Merge PR #1991
         run: |
           cd nexus-cli
           git fetch origin pull/1991/head:pr-1991
           git merge pr-1991 --no-ff -m "merge PR #1991 into v0.10.14"
 
-      - name: Patch setup.rs line 102
+      # ---------------------------------------------------------
+      # 10. Patch file
+      # ---------------------------------------------------------
+      - name: Patch setup.rs
         run: |
           cd nexus-cli/clients/cli/src/session
           sed -i '102s/.*/let num_workers: usize = max_threads.unwrap_or(1).clamp(1, 12) as usize;/' setup.rs
 
+      # ---------------------------------------------------------
+      # 11. Build (tối ưu nhất)
+      # ---------------------------------------------------------
       - name: Build Nexus CLI
         run: |
           cd nexus-cli/clients/cli
-          cargo build --release
+          cargo build --release --locked
 
+      # ---------------------------------------------------------
+      # 12. RUN NODE (giữ nguyên theo yêu cầu)
+      # ---------------------------------------------------------
       - name: Start Nexus Node
         run: |
-          echo "=== starting nexus node at $(date) ==="
           cd nexus-cli/clients/cli
           ./target/release/nexus-network start --node-id 28157911 --max-threads 4 --max-difficulty extra_large_5 --headless
